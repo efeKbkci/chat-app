@@ -10,28 +10,50 @@ public class ProcessMessage(SendMessage sendMessage)
 {
     public async Task Execute(string message)
     {
-        NetworkMessage networkMessage = MessageSerializer.Deserialize(message);
-
-        switch (networkMessage)
+        try
         {
-            case ChatMessage chatMessage:
-                byte[] data = Encoding.UTF8.GetBytes(chatMessage.Content);
-                await sendMessage.ExecuteAsync(data);
-                break;
-            case JoinMessage userJoinedMessage:
-                byte[] joined = Encoding.UTF8.GetBytes(userJoinedMessage.Announcement);
-                await sendMessage.ExecuteAsync(joined);
-                break;
-            case LeaveMessage userLeftMessage:
-                byte[] left = Encoding.UTF8.GetBytes(userLeftMessage.Announcement);
-                await sendMessage.ExecuteAsync(left);
-                break;
-            case Discover _:
-                Console.WriteLine("Received discover message.");
-                break;
-            default:
-                Console.WriteLine("Unknown message type received.");
-                break;
+            NetworkMessage networkMessage = MessageSerializer.Deserialize(message);
+
+            switch (networkMessage)
+            {
+                case ChatMessage chatMessage:
+                    // Mesajın içeriğini değil, objenin tamamını tekrar JSON'a çevirip gönderiyoruz
+                    string chatJson = MessageSerializer.Serialize(chatMessage);
+                    byte[] chatData = Encoding.UTF8.GetBytes(chatJson);
+                    await sendMessage.ExecuteAsync(chatData);
+                    break;
+
+                case JoinMessage userJoinedMessage:
+                    Console.WriteLine($"User joined: {userJoinedMessage.Username}");
+
+                    // Client'ların da anlayabilmesi için objeyi serileştirerek yayınlıyoruz
+                    string joinJson = MessageSerializer.Serialize(userJoinedMessage);
+                    byte[] joinData = Encoding.UTF8.GetBytes(joinJson);
+                    await sendMessage.ExecuteAsync(joinData);
+                    break;
+
+                case LeaveMessage userLeftMessage:
+                    Console.WriteLine($"User left: {userLeftMessage.Username}");
+
+                    string leftJson = MessageSerializer.Serialize(userLeftMessage);
+                    byte[] leftData = Encoding.UTF8.GetBytes(leftJson);
+                    await sendMessage.ExecuteAsync(leftData);
+                    break;
+
+                case Discover _:
+                    Console.WriteLine("Received discover message.");
+                    // İleride buraya RoomInfo mesajı oluşturup geri gönderme mantığı eklenebilir
+                    break;
+
+                default:
+                    Console.WriteLine("Unknown message type received.");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Client'tan hatalı veya bozuk bir veri gelirse sunucunun çökmemesi için try-catch ekledik
+            Console.WriteLine($"Mesaj işlenirken hata oluştu: {ex.Message}");
         }
     }
 }

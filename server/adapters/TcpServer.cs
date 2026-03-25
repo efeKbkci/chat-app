@@ -13,31 +13,49 @@ namespace chat_app.server.adapters;
 
 // Bir kullanıcı bağlandıktan sonra, bir katılma mesajı gönderecek. Gönderilen mesaj kullanıcı hakkında bilgi içerecek
 
-public class TcpServer(ProcessMessage processMessage, int port = 5000) : IChatServer
+public class TcpServer(ProcessMessage processMessage, IClientManager clientManager, int port = 5000) : IChatServer
 {
     private readonly TcpListener Listener = new(IPAddress.Any, port);
     private readonly ProcessMessage processMessage = processMessage;
+    private readonly IClientManager clientManager = clientManager;
+    private bool _isRunning;
 
     public async Task StartServerAsync(int port = 5000)
     {
         Listener.Start();
+        _isRunning = true;
 
         Console.WriteLine($"TCP Server started on port {port}");
 
-        while (true)
+        while (_isRunning)
         {
-            var tcpClient = await Listener.AcceptTcpClientAsync();
-            var clientConnection = new TcpClientConnection(tcpClient);
-            _ = ListenClientAsync(clientConnection);
+            try
+            {
+                var tcpClient = await Listener.AcceptTcpClientAsync();
+                var clientConnection = new TcpClientConnection(tcpClient);
+                clientManager.AddClient(clientConnection);
+                _ = ListenClientAsync(clientConnection);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Server durdurulduğunda _listener kapandığı için bu hata fırlatılır, normaldir döngüden çıkılır.
+                break;
+            }
         }
     }
     public void StopServer()
     {
         Listener.Stop();
+        _isRunning = false;
+
+        foreach (var client in clientManager.GetAllClients())
+        {
+            client.CloseConnection();
+        }
     }
     private async Task ListenClientAsync(TcpClientConnection client)
     {
-        var buffer = new byte[1024];
+        var buffer = new byte[4096];
 
         try
         {
@@ -59,6 +77,7 @@ public class TcpServer(ProcessMessage processMessage, int port = 5000) : IChatSe
         }
         finally // Silinecek, client bağlantıyı kendisi kapatacak
         {
+            clientManager.RemoveClient(client);
             client.CloseConnection();
             Console.WriteLine("Client disconnected");
         }
